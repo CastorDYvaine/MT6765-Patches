@@ -1,0 +1,80 @@
+# Reference: <https://postmarketos.org/vendorkernel>
+# Kernel config based on: arch/arm64/configs/(CHANGEME!)
+
+maintainer=""
+pkgname=linux-motorola-malta64
+pkgver=4.9.190
+pkgrel=0
+pkgdesc="Motorola Moto E(7) kernel fork"
+arch="aarch64"
+_carch="arm64"
+_flavor="motorola-malta64"
+url="https://kernel.org"
+license="GPL-2.0-only"
+options="!strip !check !tracedeps pmb:cross-native"
+makedepends="
+	bash
+	bc
+	bison
+	devicepkg-dev
+	findutils
+	flex
+	openssl-dev
+	perl
+	python3
+"
+
+# Source
+_repository="kernel-mtk"
+_commit="4d224a8eb3c8de19d130fe1cd7f335a1d60a54ba"
+_config="config-$_flavor.$arch"
+source="
+	$pkgname-$_commit.tar.gz::https://github.com/MotorolaMobilityLLC/$_repository/archive/$_commit.tar.gz
+	$_config
+	0002-Port-drvgen-scripts-to-Python3.patch
+	linux4.2-gcc10-extern_YYLOC_global_declaration.patch
+"
+builddir="$srcdir/$_repository-$_commit"
+_outdir="out"
+
+prepare() {
+	default_prepare
+	. downstreamkernel_prepare
+}
+
+build() {
+	unset LDFLAGS
+	make O="$_outdir" ARCH="$_carch" CC="${CC:-gcc}" \
+		KBUILD_BUILD_VERSION="$((pkgrel + 1 ))-postmarketOS"
+}
+
+package() {
+	downstreamkernel_package "$builddir" "$pkgdir" "$_carch" \
+		"$_flavor" "$_outdir"
+
+	if [ -f "$_outdir"/arch/arm64/boot/Image ]
+	then
+		rm "$_outdir"/arch/arm64/boot/Image
+	fi
+
+	mv "$_outdir"/arch/arm64/boot/Image.gz "$_outdir"/arch/arm64/boot/Image
+
+	downstreamkernel_package "$builddir" "$pkgdir" "$_carch" \
+		"$_flavor" "$_outdir"
+
+	make dtbs_install O="$_outdir" ARCH="$_carch" \
+		INSTALL_DTBS_PATH="$pkgdir"/boot/dtbs
+
+	# We also need to convert the kernel DTB into a proper android dtb image with the 64-byte header
+
+	mv "$pkgdir"/boot/dtbs/mediatek/mt6765.dtb "$pkgdir"/boot/dtbs/mediatek/mt6765.dtb.bak
+	mkdtboimg create "$pkgdir"/boot/dtbs/mediatek/mt6765.dtb "$pkgdir"/boot/dtbs/mediatek/mt6765.dtb.bak
+	rm "$pkgdir"/boot/dtbs/mediatek/mt6765.dtb.bak
+}
+
+sha512sums="
+9d98b518fe23434bb5adcbea8761ca01081627011b2dff7e7623df8f2965efd79128b0c4df66858f793cf1092b85ded605135e0c20e6ff5061466db34c465827  linux-motorola-malta64-4d224a8eb3c8de19d130fe1cd7f335a1d60a54ba.tar.gz
+734e98893c3dd204624e5aaecd83db73314d8c4d0516349f6e3839c8d6de5d88f39dbe7b8f35256d5db98330af7f6900a71defa9c95fff5cadc5c36b465e84a3  config-motorola-malta64.aarch64
+6e8e12268c0c5eff0e3d0964f26678929410138a8783c628953112e449400cf8660e83321cd9cebf34ac74dd008f32dd4b0b6bdfa7097083cbaa23920367f13e  0002-Port-drvgen-scripts-to-Python3.patch
+eaf2e61fcb508cdd239b8fed209d2a09ecac77287f6b46d003918fdf1c6fa2ee63f7390f3ff7c49029b8ed6cbcdd81c7e9a4b1ece9f5060b6fc84e322bd47f41  linux4.2-gcc10-extern_YYLOC_global_declaration.patch
+"
